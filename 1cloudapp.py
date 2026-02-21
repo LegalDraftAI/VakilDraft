@@ -7,7 +7,7 @@ from fpdf import FPDF
 from supabase import create_client, Client
 
 # ---------------------------------------------------
-# 0. UNIVERSAL UI LOCKDOWN (FIRST STREAMLIT COMMAND)
+# 0. UNIVERSAL UI LOCKDOWN
 # ---------------------------------------------------
 st.set_page_config(
     page_title="VakilDraft",
@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# 1. SESSION STATE INITIALIZATION
+# 1. SESSION STATE INIT
 # ---------------------------------------------------
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
@@ -46,7 +46,26 @@ if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Auto-Pilot"
 
 # ---------------------------------------------------
-# 2. LOGIN SYSTEM
+# RESET FUNCTION (PROFESSIONAL CLEAN RESET)
+# ---------------------------------------------------
+def reset_everything():
+    user = st.session_state.user_role
+    auth = st.session_state.authenticated
+    history = st.session_state.draft_history
+
+    st.session_state.clear()
+
+    st.session_state.authenticated = auth
+    st.session_state.user_role = user
+    st.session_state.draft_history = history
+    st.session_state.final_master = ""
+    st.session_state.facts_input = ""
+    st.session_state.selected_model = "Auto-Pilot"
+
+    st.rerun()
+
+# ---------------------------------------------------
+# LOGIN
 # ---------------------------------------------------
 if not st.session_state.authenticated:
     st.title("👨‍⚖️ VakilDraft Login")
@@ -67,7 +86,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ---------------------------------------------------
-# 3. CLOUD & STORAGE
+# STORAGE
 # ---------------------------------------------------
 SUPABASE_URL = "https://wuhsjcwtoradbzeqsoih.supabase.co"
 SUPABASE_KEY = "sb_publishable_02nqexIYCCBaWryubZEkqA_Tw2PqX6m"
@@ -78,7 +97,7 @@ if not os.path.exists(VAULT_PATH):
     os.makedirs(VAULT_PATH)
 
 # ---------------------------------------------------
-# 4. COURT DATA
+# COURT DATA
 # ---------------------------------------------------
 COURT_DATA = {
     "High Court": ["Writ Petition (Civil)", "Writ Petition (Crl)", "Bail App", "Crl.MC", "Mat.Appeal", "RFA", "RSA"],
@@ -112,14 +131,13 @@ DIST_SESSIONS_COURT = {
 }
 
 # ---------------------------------------------------
-# 5. FUNCTIONS
+# FUNCTIONS
 # ---------------------------------------------------
 def perform_replacement(old, new):
     if new and old and "main_editor" in st.session_state:
         updated = st.session_state.main_editor.replace(old, new)
         st.session_state.final_master = updated
         st.session_state.main_editor = updated
-
 
 def smart_rotate_draft(prompt, facts, choice):
     projects = st.secrets.get("API_KEYS", [])
@@ -144,9 +162,9 @@ def smart_rotate_draft(prompt, facts, choice):
     return None, "Offline", 0
 
 # ---------------------------------------------------
-# 6. TOP BAR
+# TOP BAR
 # ---------------------------------------------------
-col1, col2, col3 = st.columns([6, 2, 1])
+col1, col2, col3 = st.columns([6,2,1])
 
 with col1:
     st.markdown("## ⚖️ VakilDraft")
@@ -163,12 +181,12 @@ with col3:
 st.divider()
 
 # ---------------------------------------------------
-# 7. MAIN COURT SELECTION
+# COURT SELECTION
 # ---------------------------------------------------
 c1, c2 = st.columns(2)
 
 with c1:
-    court_options = [
+    court = st.selectbox("Court Level", [
         "High Court",
         "Dist & Sessions Court",
         "Family Court",
@@ -176,16 +194,13 @@ with c1:
         "DVC (Domestic Violence)",
         "MC (Magistrate)",
         "MVOP (Motor Accident)"
-    ]
-
-    court = st.selectbox("Court Level", court_options)
+    ], key="court_select")
 
     if court == "Dist & Sessions Court":
-        category = st.selectbox("Category", ["Civil", "Criminal"])
-        case_types = DIST_SESSIONS_COURT.get(category, [])
-        dtype = st.selectbox("Case Type", case_types)
+        category = st.selectbox("Category", ["Civil", "Criminal"], key="category_select")
+        dtype = st.selectbox("Case Type", DIST_SESSIONS_COURT[category], key="dtype_select")
     else:
-        dtype = st.selectbox("Petition Type", COURT_DATA.get(court, []))
+        dtype = st.selectbox("Petition Type", COURT_DATA[court], key="dtype_select")
 
 with c2:
     dists = [
@@ -198,19 +213,20 @@ with c2:
         target_dist = "Ernakulam"
         st.text_input("District", value="Ernakulam (High Court of Kerala)", disabled=True)
     else:
-        target_dist = st.selectbox("District", dists)
+        target_dist = st.selectbox("District", dists, key="district_select")
 
 # ---------------------------------------------------
-# 8. FACTS INPUT
+# FACTS
 # ---------------------------------------------------
 st.session_state.facts_input = st.text_area(
     "Case Facts:",
     value=st.session_state.facts_input,
-    height=150
+    height=150,
+    key="facts_area"
 )
 
 # ---------------------------------------------------
-# 9. PRECEDENT SEARCH
+# PRECEDENTS
 # ---------------------------------------------------
 if st.session_state.facts_input:
     search_q = urllib.parse.quote(f"{dtype} {st.session_state.facts_input[:50]} Kerala")
@@ -218,7 +234,7 @@ if st.session_state.facts_input:
         st.markdown(f"🔗 [Search Indian Kanoon](https://indiankanoon.org/search/?formInput={search_q})")
 
 # ---------------------------------------------------
-# 10. ACTION BUTTONS
+# ACTION BUTTONS
 # ---------------------------------------------------
 b1, b2, b3 = st.columns(3)
 
@@ -236,7 +252,7 @@ with b1:
                 st.toast(f"Draft generated in {sec}s")
 
 with b2:
-    selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH))
+    selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH), key="mirror_select")
     if st.button("✨ Mirror Style", use_container_width=True, disabled=(selected_ref == "None")):
         doc = Document(os.path.join(VAULT_PATH, selected_ref))
         dna = "\n".join([p.text for p in doc.paragraphs[:15]])
@@ -248,12 +264,10 @@ with b2:
 
 with b3:
     if st.button("🗑️ Reset All", use_container_width=True):
-        st.session_state.final_master = ""
-        st.session_state.facts_input = ""
-        st.rerun()
+        reset_everything()
 
 # ---------------------------------------------------
-# 11. STYLE VAULT
+# VAULT
 # ---------------------------------------------------
 with st.expander("📁 Style Vault Upload"):
     uploaded = st.file_uploader("Upload Reference (.docx)", type="docx")
@@ -263,7 +277,7 @@ with st.expander("📁 Style Vault Upload"):
         st.success("Uploaded successfully.")
 
 # ---------------------------------------------------
-# 12. DRAFT HISTORY
+# HISTORY
 # ---------------------------------------------------
 with st.expander("📜 Draft History (Last 10)"):
     for i, item in enumerate(st.session_state.draft_history[:10]):
@@ -272,7 +286,7 @@ with st.expander("📜 Draft History (Last 10)"):
             st.rerun()
 
 # ---------------------------------------------------
-# 13. EDITOR & DOWNLOADS
+# EDITOR
 # ---------------------------------------------------
 if st.session_state.final_master:
     st.divider()
