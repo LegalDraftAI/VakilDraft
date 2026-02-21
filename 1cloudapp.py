@@ -46,11 +46,17 @@ if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Auto-Pilot"
 
 # Research states
-if "search_links" not in st.session_state:
-    st.session_state.search_links = []
+if "search_keywords" not in st.session_state:
+    st.session_state.search_keywords = []
 
 if "selected_references" not in st.session_state:
     st.session_state.selected_references = []
+
+if "research_court" not in st.session_state:
+    st.session_state.research_court = "Kerala High Court"
+
+if "research_period" not in st.session_state:
+    st.session_state.research_period = "Last 3 Years"
 
 # ---------------------------------------------------
 # 2. LOGIN
@@ -175,20 +181,9 @@ Facts: {facts}
 """
     result, _, _ = smart_rotate_draft(strict_prompt, facts, st.session_state.selected_model)
     if result:
-        lines = [l.strip() for l in result.split("\n") if l.strip()]
+        lines = [l.strip("- ").strip() for l in result.split("\n") if l.strip()]
         return lines[:3]
     return []
-
-def generate_search_links(court, keywords):
-    current_year = datetime.now().year
-    years = f"{current_year} OR {current_year-1} OR {current_year-2}"
-    domain = "highcourt.kerala.gov.in" if court == "High Court" else "sci.gov.in"
-    links = []
-    for phrase in keywords:
-        query = f"site:{domain} {phrase} judgment ({years})"
-        encoded = urllib.parse.quote_plus(query)
-        links.append((phrase, f"https://www.google.com/search?q={encoded}"))
-    return links
 
 # ---------------------------------------------------
 # 6. TOP BAR
@@ -257,28 +252,98 @@ st.session_state.facts_input = st.text_area(
 )
 
 # ---------------------------------------------------
-# 8A. JUDGMENT RESEARCH
+# 8A. LITIGATION RESEARCH MODULE (PROFESSIONAL)
 # ---------------------------------------------------
 st.divider()
-st.subheader("📚 Latest Judgments (Last 3 Years – Official Only)")
+st.subheader("📚 Litigation Research Module (Verified Only)")
 
-if st.button("🧠 Generate Judgment Search Links"):
+st.session_state.research_court = st.radio(
+    "Research From:",
+    ["Kerala High Court", "Supreme Court", "Both"],
+    horizontal=True
+)
+
+st.session_state.research_period = st.radio(
+    "Research Period:",
+    ["Last 3 Years", "Last 5 Years", "No Limit"],
+    horizontal=True
+)
+
+def generate_google_link(base_site, keywords, period):
+    from urllib.parse import quote_plus
+    current_year = datetime.now().year
+    year_filter = ""
+
+    if period == "Last 3 Years":
+        year_filter = f"{current_year}|{current_year-1}|{current_year-2}"
+    elif period == "Last 5 Years":
+        year_filter = f"{current_year}|{current_year-1}|{current_year-2}|{current_year-3}|{current_year-4}"
+
+    query = f"site:{base_site} {keywords} judgment {year_filter}"
+    return f"https://www.google.com/search?q={quote_plus(query)}"
+
+if st.button("🧠 Generate Official Search Links"):
     if st.session_state.facts_input.strip():
         keywords = generate_search_keywords(dtype, st.session_state.facts_input)
-        st.session_state.search_links = generate_search_links(court, keywords)
+        st.session_state.search_keywords = keywords
     else:
         st.warning("Enter facts first.")
 
-if st.session_state.search_links:
-    selected_cases = []
-    for i, (phrase, link) in enumerate(st.session_state.search_links):
+if st.session_state.search_keywords:
+    st.markdown("### 🔎 Official Search Links")
+
+    for phrase in st.session_state.search_keywords:
+
         st.markdown(f"**Search Phrase:** {phrase}")
-        st.markdown(f"[🔍 Search Official Website]({link})")
-        citation = st.text_input("Paste Exact Case Title (Optional)", key=f"case_{i}")
-        if citation.strip():
-            selected_cases.append(citation.strip())
+
+        if st.session_state.research_court in ["Kerala High Court", "Both"]:
+            kerala_link = generate_google_link(
+                "highcourt.kerala.gov.in",
+                phrase,
+                st.session_state.research_period
+            )
+            st.markdown(f"[🔗 Search Kerala High Court]({kerala_link})")
+
+        if st.session_state.research_court in ["Supreme Court", "Both"]:
+            sc_link = generate_google_link(
+                "sci.gov.in",
+                phrase,
+                st.session_state.research_period
+            )
+            st.markdown(f"[🔗 Search Supreme Court]({sc_link})")
+
         st.markdown("---")
-    st.session_state.selected_references = selected_cases
+
+# ---------------------------------------------------
+# VERIFIED JUDGMENT ENTRY
+# ---------------------------------------------------
+st.markdown("## 📥 Add Verified Judgment")
+
+case_title = st.text_input("Case Title (Required)")
+citation = st.text_input("Citation (Optional)")
+extract = st.text_area("Relevant Extract from Official Judgment (Required)", height=150)
+
+if st.button("➕ Add to Draft References"):
+    if not case_title.strip() or not extract.strip():
+        st.warning("Case Title and Extract are mandatory.")
+    else:
+        st.session_state.selected_references.append({
+            "title": case_title.strip(),
+            "citation": citation.strip(),
+            "extract": extract.strip()
+        })
+        st.success("Judgment added.")
+
+if st.session_state.selected_references:
+    st.markdown("### 📚 Added References")
+
+    for i, ref in enumerate(st.session_state.selected_references):
+        with st.expander(ref["title"]):
+            st.write(f"**Citation:** {ref['citation']}")
+            st.write(ref["extract"][:500] + "...")
+            if st.button(f"❌ Remove {i}", key=f"remove_{i}"):
+                st.session_state.selected_references.pop(i)
+                st.rerun()
 
 # ---------------------------------------------------
 # 9. ACTION BUTTONS
@@ -288,37 +353,44 @@ b1, b2, b3 = st.columns(3)
 with b1:
     if st.button("🚀 Draft Standard", type="primary", use_container_width=True):
 
-        selected_meta = ""
+        references_text = ""
         if st.session_state.selected_references:
-            selected_meta = "\nRefer ONLY to the following judgments if relevant:\n"
+            references_text = "\nVerified Judgments:\n"
             for ref in st.session_state.selected_references:
-                selected_meta += f"{ref}\n"
+                references_text += f"""
+Case: {ref['title']}
+Citation: {ref['citation']}
+Extract:
+{ref['extract']}
+"""
 
         prompt = f"""
 Draft {dtype} for {court} at {target_dist}.
+
 Facts:
 {st.session_state.facts_input}
-{selected_meta}
+
+IMPORTANT:
+Use ONLY the verified judgment extracts below.
+Do NOT create or assume any case law.
+If no verified extract is provided, do not cite case law.
+
+{references_text}
+
 STRICT RULES:
 - STRICTLY use PARTY A and PARTY B
-- Do NOT invent case law
-- Do NOT fabricate citations
-- If no references provided, do not include case law
 """
 
         with st.spinner("AI Drafting..."):
             res, tank, sec = smart_rotate_draft(prompt, st.session_state.facts_input, st.session_state.selected_model)
 
             if res:
-                if detect_unverified_citation(res) and not st.session_state.selected_references:
-                    st.error("Unverified citation detected. Draft blocked.")
-                else:
-                    st.session_state.final_master = res
-                    st.session_state.draft_history.insert(
-                        0,
-                        {"label": f"{dtype} ({datetime.now().strftime('%H:%M')})", "content": res}
-                    )
-                    st.toast(f"Draft generated in {sec}s")
+                st.session_state.final_master = res
+                st.session_state.draft_history.insert(
+                    0,
+                    {"label": f"{dtype} ({datetime.now().strftime('%H:%M')})", "content": res}
+                )
+                st.toast(f"Draft generated in {sec}s")
 
 with b2:
     selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH))
