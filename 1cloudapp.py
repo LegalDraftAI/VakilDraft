@@ -46,26 +46,7 @@ if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Auto-Pilot"
 
 # ---------------------------------------------------
-# RESET FUNCTION (PROFESSIONAL CLEAN RESET)
-# ---------------------------------------------------
-def reset_everything():
-    user = st.session_state.user_role
-    auth = st.session_state.authenticated
-    history = st.session_state.draft_history
-
-    st.session_state.clear()
-
-    st.session_state.authenticated = auth
-    st.session_state.user_role = user
-    st.session_state.draft_history = history
-    st.session_state.final_master = ""
-    st.session_state.facts_input = ""
-    st.session_state.selected_model = "Auto-Pilot"
-
-    st.rerun()
-
-# ---------------------------------------------------
-# LOGIN
+# 2. LOGIN
 # ---------------------------------------------------
 if not st.session_state.authenticated:
     st.title("👨‍⚖️ VakilDraft Login")
@@ -86,7 +67,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ---------------------------------------------------
-# STORAGE
+# 3. STORAGE
 # ---------------------------------------------------
 SUPABASE_URL = "https://wuhsjcwtoradbzeqsoih.supabase.co"
 SUPABASE_KEY = "sb_publishable_02nqexIYCCBaWryubZEkqA_Tw2PqX6m"
@@ -97,7 +78,7 @@ if not os.path.exists(VAULT_PATH):
     os.makedirs(VAULT_PATH)
 
 # ---------------------------------------------------
-# COURT DATA
+# 4. COURT DATA
 # ---------------------------------------------------
 COURT_DATA = {
     "High Court": ["Writ Petition (Civil)", "Writ Petition (Crl)", "Bail App", "Crl.MC", "Mat.Appeal", "RFA", "RSA"],
@@ -131,13 +112,14 @@ DIST_SESSIONS_COURT = {
 }
 
 # ---------------------------------------------------
-# FUNCTIONS
+# 5. FUNCTIONS
 # ---------------------------------------------------
 def perform_replacement(old, new):
     if new and old and "main_editor" in st.session_state:
         updated = st.session_state.main_editor.replace(old, new)
         st.session_state.final_master = updated
         st.session_state.main_editor = updated
+
 
 def smart_rotate_draft(prompt, facts, choice):
     projects = st.secrets.get("API_KEYS", [])
@@ -162,9 +144,9 @@ def smart_rotate_draft(prompt, facts, choice):
     return None, "Offline", 0
 
 # ---------------------------------------------------
-# TOP BAR
+# 6. TOP BAR
 # ---------------------------------------------------
-col1, col2, col3 = st.columns([6,2,1])
+col1, col2, col3 = st.columns([6, 2, 1])
 
 with col1:
     st.markdown("## ⚖️ VakilDraft")
@@ -181,12 +163,12 @@ with col3:
 st.divider()
 
 # ---------------------------------------------------
-# COURT SELECTION
+# 7. COURT SELECTION
 # ---------------------------------------------------
 c1, c2 = st.columns(2)
 
 with c1:
-    court = st.selectbox("Court Level", [
+    court_options = [
         "High Court",
         "Dist & Sessions Court",
         "Family Court",
@@ -194,13 +176,16 @@ with c1:
         "DVC (Domestic Violence)",
         "MC (Magistrate)",
         "MVOP (Motor Accident)"
-    ], key="court_select")
+    ]
+
+    court = st.selectbox("Court Level", court_options)
 
     if court == "Dist & Sessions Court":
-        category = st.selectbox("Category", ["Civil", "Criminal"], key="category_select")
-        dtype = st.selectbox("Case Type", DIST_SESSIONS_COURT[category], key="dtype_select")
+        category = st.selectbox("Category", ["Civil", "Criminal"])
+        case_types = DIST_SESSIONS_COURT.get(category, [])
+        dtype = st.selectbox("Case Type", case_types)
     else:
-        dtype = st.selectbox("Petition Type", COURT_DATA[court], key="dtype_select")
+        dtype = st.selectbox("Petition Type", COURT_DATA.get(court, []))
 
 with c2:
     dists = [
@@ -213,28 +198,19 @@ with c2:
         target_dist = "Ernakulam"
         st.text_input("District", value="Ernakulam (High Court of Kerala)", disabled=True)
     else:
-        target_dist = st.selectbox("District", dists, key="district_select")
+        target_dist = st.selectbox("District", dists)
 
 # ---------------------------------------------------
-# FACTS
+# 8. FACTS INPUT
 # ---------------------------------------------------
 st.session_state.facts_input = st.text_area(
     "Case Facts:",
     value=st.session_state.facts_input,
-    height=150,
-    key="facts_area"
+    height=150
 )
 
 # ---------------------------------------------------
-# PRECEDENTS
-# ---------------------------------------------------
-if st.session_state.facts_input:
-    search_q = urllib.parse.quote(f"{dtype} {st.session_state.facts_input[:50]} Kerala")
-    with st.expander("🔍 Precedents & Indian Research", expanded=True):
-        st.markdown(f"🔗 [Search Indian Kanoon](https://indiankanoon.org/search/?formInput={search_q})")
-
-# ---------------------------------------------------
-# ACTION BUTTONS
+# 9. ACTION BUTTONS
 # ---------------------------------------------------
 b1, b2, b3 = st.columns(3)
 
@@ -252,7 +228,7 @@ with b1:
                 st.toast(f"Draft generated in {sec}s")
 
 with b2:
-    selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH), key="mirror_select")
+    selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH))
     if st.button("✨ Mirror Style", use_container_width=True, disabled=(selected_ref == "None")):
         doc = Document(os.path.join(VAULT_PATH, selected_ref))
         dna = "\n".join([p.text for p in doc.paragraphs[:15]])
@@ -264,10 +240,23 @@ with b2:
 
 with b3:
     if st.button("🗑️ Reset All", use_container_width=True):
-        reset_everything()
+
+        # Preserve login state
+        preserved_auth = st.session_state.get("authenticated", False)
+        preserved_role = st.session_state.get("user_role", "user")
+
+        # Clear everything
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+
+        # Restore login
+        st.session_state.authenticated = preserved_auth
+        st.session_state.user_role = preserved_role
+
+        st.rerun()
 
 # ---------------------------------------------------
-# VAULT
+# 10. STYLE VAULT
 # ---------------------------------------------------
 with st.expander("📁 Style Vault Upload"):
     uploaded = st.file_uploader("Upload Reference (.docx)", type="docx")
@@ -277,7 +266,7 @@ with st.expander("📁 Style Vault Upload"):
         st.success("Uploaded successfully.")
 
 # ---------------------------------------------------
-# HISTORY
+# 11. DRAFT HISTORY
 # ---------------------------------------------------
 with st.expander("📜 Draft History (Last 10)"):
     for i, item in enumerate(st.session_state.draft_history[:10]):
@@ -286,9 +275,10 @@ with st.expander("📜 Draft History (Last 10)"):
             st.rerun()
 
 # ---------------------------------------------------
-# EDITOR
+# 12. EDITOR & DOWNLOAD
 # ---------------------------------------------------
 if st.session_state.final_master:
+
     st.divider()
 
     col_a, col_b, col_c = st.columns(3)
