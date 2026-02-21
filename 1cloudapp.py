@@ -1,5 +1,5 @@
 import streamlit as st
-import os, io, urllib.parse, time, pandas as pd
+import os, io, urllib.parse, time, pandas as pd, re
 from datetime import datetime
 from google import genai
 from docx import Document
@@ -44,6 +44,13 @@ if 'facts_input' not in st.session_state:
 
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Auto-Pilot"
+
+# Research states
+if "search_links" not in st.session_state:
+    st.session_state.search_links = []
+
+if "selected_references" not in st.session_state:
+    st.session_state.selected_references = []
 
 # ---------------------------------------------------
 # 2. LOGIN
@@ -112,7 +119,7 @@ DIST_SESSIONS_COURT = {
 }
 
 # ---------------------------------------------------
-# 5. FUNCTIONS
+# 5. CORE FUNCTIONS
 # ---------------------------------------------------
 def perform_replacement(old, new):
     if new and old and "main_editor" in st.session_state:
@@ -120,6 +127,17 @@ def perform_replacement(old, new):
         st.session_state.final_master = updated
         st.session_state.main_editor = updated
 
+def detect_unverified_citation(text):
+    patterns = [
+        r"\(\d{4}\)\s*\d+\s*SCC",
+        r"AIR\s*\d{4}",
+        r"\d{4}\s*KHC",
+        r"\d{4}\s*Ker\s*LJ"
+    ]
+    for p in patterns:
+        if re.search(p, text):
+            return True
+    return False
 
 def smart_rotate_draft(prompt, facts, choice):
     projects = st.secrets.get("API_KEYS", [])
@@ -142,6 +160,35 @@ def smart_rotate_draft(prompt, facts, choice):
             continue
 
     return None, "Offline", 0
+
+def generate_search_keywords(dtype, facts):
+    strict_prompt = f"""
+Generate exactly 3 short legal issue-based search phrases.
+STRICT RULES:
+- Do NOT generate case names
+- Do NOT generate citations
+- Maximum 6 words per phrase
+- Output only 3 lines
+
+Petition Type: {dtype}
+Facts: {facts}
+"""
+    result, _, _ = smart_rotate_draft(strict_prompt, facts, st.session_state.selected_model)
+    if result:
+        lines = [l.strip() for l in result.split("\n") if l.strip()]
+        return lines[:3]
+    return []
+
+def generate_search_links(court, keywords):
+    current_year = datetime.now().year
+    years = f"{current_year} OR {current_year-1} OR {current_year-2}"
+    domain = "highcourt.kerala.gov.in" if court == "High Court" else "sci.gov.in"
+    links = []
+    for phrase in keywords:
+        query = f"site:{domain} {phrase} judgment ({years})"
+        encoded = urllib.parse.quote_plus(query)
+        links.append((phrase, f"https://www.google.com/search?q={encoded}"))
+    return links
 
 # ---------------------------------------------------
 # 6. TOP BAR
@@ -210,22 +257,68 @@ st.session_state.facts_input = st.text_area(
 )
 
 # ---------------------------------------------------
+# 8A. JUDGMENT RESEARCH
+# ---------------------------------------------------
+st.divider()
+st.subheader("📚 Latest Judgments (Last 3 Years – Official Only)")
+
+if st.button("🧠 Generate Judgment Search Links"):
+    if st.session_state.facts_input.strip():
+        keywords = generate_search_keywords(dtype, st.session_state.facts_input)
+        st.session_state.search_links = generate_search_links(court, keywords)
+    else:
+        st.warning("Enter facts first.")
+
+if st.session_state.search_links:
+    selected_cases = []
+    for i, (phrase, link) in enumerate(st.session_state.search_links):
+        st.markdown(f"**Search Phrase:** {phrase}")
+        st.markdown(f"[🔍 Search Official Website]({link})")
+        citation = st.text_input("Paste Exact Case Title (Optional)", key=f"case_{i}")
+        if citation.strip():
+            selected_cases.append(citation.strip())
+        st.markdown("---")
+    st.session_state.selected_references = selected_cases
+
+# ---------------------------------------------------
 # 9. ACTION BUTTONS
 # ---------------------------------------------------
 b1, b2, b3 = st.columns(3)
 
 with b1:
     if st.button("🚀 Draft Standard", type="primary", use_container_width=True):
-        prompt = f"Draft {dtype} for {court} at {target_dist}. Facts: {st.session_state.facts_input}. STRICTLY USE PARTY A/B."
+
+        selected_meta = ""
+        if st.session_state.selected_references:
+            selected_meta = "\nRefer ONLY to the following judgments if relevant:\n"
+            for ref in st.session_state.selected_references:
+                selected_meta += f"{ref}\n"
+
+        prompt = f"""
+Draft {dtype} for {court} at {target_dist}.
+Facts:
+{st.session_state.facts_input}
+{selected_meta}
+STRICT RULES:
+- STRICTLY use PARTY A and PARTY B
+- Do NOT invent case law
+- Do NOT fabricate citations
+- If no references provided, do not include case law
+"""
+
         with st.spinner("AI Drafting..."):
             res, tank, sec = smart_rotate_draft(prompt, st.session_state.facts_input, st.session_state.selected_model)
+
             if res:
-                st.session_state.final_master = res
-                st.session_state.draft_history.insert(
-                    0,
-                    {"label": f"{dtype} ({datetime.now().strftime('%H:%M')})", "content": res}
-                )
-                st.toast(f"Draft generated in {sec}s")
+                if detect_unverified_citation(res) and not st.session_state.selected_references:
+                    st.error("Unverified citation detected. Draft blocked.")
+                else:
+                    st.session_state.final_master = res
+                    st.session_state.draft_history.insert(
+                        0,
+                        {"label": f"{dtype} ({datetime.now().strftime('%H:%M')})", "content": res}
+                    )
+                    st.toast(f"Draft generated in {sec}s")
 
 with b2:
     selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH))
@@ -240,19 +333,12 @@ with b2:
 
 with b3:
     if st.button("🗑️ Reset All", use_container_width=True):
-
-        # Preserve login state
         preserved_auth = st.session_state.get("authenticated", False)
         preserved_role = st.session_state.get("user_role", "user")
-
-        # Clear everything
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-
-        # Restore login
         st.session_state.authenticated = preserved_auth
         st.session_state.user_role = preserved_role
-
         st.rerun()
 
 # ---------------------------------------------------
@@ -313,4 +399,3 @@ if st.session_state.final_master:
         pdf.set_font("Arial", size=11)
         pdf.multi_cell(0, 10, st.session_state.final_master.encode('latin-1','replace').decode('latin-1'))
         st.download_button("📥 PDF", data=pdf.output(dest='S').encode('latin-1'), file_name=f"{dtype}.pdf")
-
