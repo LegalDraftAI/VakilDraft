@@ -167,7 +167,69 @@ def smart_rotate_draft(prompt, facts, choice):
 
     return None, "Offline", 0
 
+# ---------------------------------------------------
+# QUERY TYPE DETECTION (NEW)
+# ---------------------------------------------------
+def detect_query_type(text):
+    q = text.lower()
+
+    # Case name detection (Vijaya K vs Mural)
+    if re.search(r"\b(vs\.?|versus|v\.)\b", q):
+        return "case_name"
+
+    # AIR citation detection
+    if re.search(r"\bair\s+\d{4}", q):
+        return "citation"
+
+    # SCC citation detection
+    if re.search(r"\(\d{4}\)\s*\d+\s*scc", q):
+        return "citation"
+
+    # Case number detection (WP(C) 1234/2022)
+    if re.search(r"(wp|op|crl|wa|rfa|mfa).*?\d+/?\d*", q):
+        return "case_number"
+
+    return "general"
+
+
+
 def generate_search_keywords(dtype, facts):
+
+    query_type = detect_query_type(facts)
+
+    # -------------------------------
+    # CASE NAME SEARCH
+    # -------------------------------
+    if query_type == "case_name":
+        return [
+            f'"{facts}"',
+            f'"{facts}" Kerala High Court',
+            f'"{facts}" judgment'
+        ]
+
+    # -------------------------------
+    # CITATION SEARCH
+    # -------------------------------
+    if query_type == "citation":
+        return [
+            f'"{facts}"',
+            f'site:indiankanoon.org "{facts}"',
+            f'site:sci.gov.in "{facts}"'
+        ]
+
+    # -------------------------------
+    # CASE NUMBER SEARCH
+    # -------------------------------
+    if query_type == "case_number":
+        return [
+            f'"{facts}" Kerala High Court',
+            f'site:indiankanoon.org "{facts}"',
+            f'"{facts}" judgment pdf'
+        ]
+
+    # -------------------------------
+    # GENERAL ISSUE SEARCH (AI)
+    # -------------------------------
     strict_prompt = f"""
 Generate exactly 3 short legal issue-based search phrases.
 STRICT RULES:
@@ -179,11 +241,15 @@ STRICT RULES:
 Petition Type: {dtype}
 Facts: {facts}
 """
+
     result, _, _ = smart_rotate_draft(strict_prompt, facts, st.session_state.selected_model)
+
     if result:
         lines = [l.strip("- ").strip() for l in result.split("\n") if l.strip()]
         return lines[:3]
+
     return []
+
 
 # ---------------------------------------------------
 # 6. TOP BAR
