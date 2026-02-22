@@ -191,8 +191,6 @@ def detect_query_type(text):
 
     return "general"
 
-
-
 def generate_search_keywords(dtype, facts):
 
     query_type = detect_query_type(facts)
@@ -201,11 +199,68 @@ def generate_search_keywords(dtype, facts):
     # CASE NAME SEARCH
     # -------------------------------
     if query_type == "case_name":
+
+        parts = re.split(r"\bvs\.?|versus|v\.\b", facts, flags=re.IGNORECASE)
+
+        if len(parts) >= 2:
+            party1 = parts[0].strip()
+            party2 = parts[1].strip()
+        else:
+            party1 = facts.strip()
+            party2 = ""
+
+        return [
+            f"{party1} {party2} Kerala High Court",
+            f"{party1} {party2} judgment",
+            f"site:indiankanoon.org {party1} {party2}"
+        ]
+
+    # -------------------------------
+    # CITATION SEARCH
+    # -------------------------------
+    if query_type == "citation":
         return [
             f'"{facts}"',
-            f'"{facts}" Kerala High Court',
-            f'"{facts}" judgment'
+            f'site:indiankanoon.org "{facts}"',
+            f'site:sci.gov.in "{facts}"'
         ]
+
+    # -------------------------------
+    # CASE NUMBER SEARCH
+    # -------------------------------
+    if query_type == "case_number":
+        return [
+            f'"{facts}" Kerala High Court',
+            f'site:indiankanoon.org "{facts}"',
+            f'"{facts}" judgment pdf'
+        ]
+
+    # -------------------------------
+    # GENERAL ISSUE SEARCH (AI)
+    # -------------------------------
+    strict_prompt = f"""
+Generate exactly 3 short legal issue-based search phrases.
+STRICT RULES:
+- Do NOT generate case names
+- Do NOT generate citations
+- Maximum 6 words per phrase
+- Output only 3 lines
+
+Petition Type: {dtype}
+Facts: {facts}
+"""
+
+    result, _, _ = smart_rotate_draft(
+        strict_prompt,
+        facts,
+        st.session_state.selected_model
+    )
+
+    if result:
+        lines = [l.strip("- ").strip() for l in result.split("\n") if l.strip()]
+        return lines[:3]
+
+    return []
 
     # -------------------------------
     # CITATION SEARCH
@@ -337,6 +392,7 @@ st.session_state.research_period = st.radio(
 
 def generate_google_link(base_site, keywords, period):
     from urllib.parse import quote_plus
+
     current_year = datetime.now().year
     year_filter = ""
 
@@ -345,13 +401,20 @@ def generate_google_link(base_site, keywords, period):
     elif period == "Last 5 Years":
         year_filter = f"{current_year}|{current_year-1}|{current_year-2}|{current_year-3}|{current_year-4}"
 
-    # FIX: Kerala HC uses Indian Kanoon (reliable indexed source)
+    # Kerala High Court search
     if base_site == "highcourt.kerala.gov.in":
-        query = f'site:indiankanoon.org "{keywords}" "Kerala High Court" {year_filter}'
+
+        if "site:" in keywords:
+            query = keywords
+        else:
+            query = f"site:indiankanoon.org {keywords} {year_filter}"
+
+    # Supreme Court search
     else:
         query = f"site:{base_site} {keywords} judgment {year_filter}"
 
     return f"https://www.google.com/search?q={quote_plus(query)}"
+
 
 if st.button("🧠 Generate Official Search Links"):
     if st.session_state.facts_input.strip():
