@@ -279,13 +279,13 @@ def generate_google_link(base_site, keywords, period):
     elif period == "Last 5 Years":
         year_filter = f"{current_year}|{current_year-1}|{current_year-2}|{current_year-3}|{current_year-4}"
 
-# FIX: Kerala HC uses Indian Kanoon (reliable indexed source)
-if base_site == "highcourt.kerala.gov.in":
-query = f'site:indiankanoon.org "{keywords}" "Kerala High Court" {year_filter}'
-else:
-query = f"site:{base_site} {keywords} judgment {year_filter}"
+    # FIX: Kerala HC uses Indian Kanoon (reliable indexed source)
+    if base_site == "highcourt.kerala.gov.in":
+        query = f'site:indiankanoon.org "{keywords}" "Kerala High Court" {year_filter}'
+    else:
+        query = f"site:{base_site} {keywords} judgment {year_filter}"
 
-return f"https://www.google.com/search?q={quote_plus(query)}"
+    return f"https://www.google.com/search?q={quote_plus(query)}"
 
 if st.button("🧠 Generate Official Search Links"):
     if st.session_state.facts_input.strip():
