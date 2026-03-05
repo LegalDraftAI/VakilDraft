@@ -5,36 +5,6 @@ from google import genai
 from docx import Document
 from fpdf import FPDF
 from supabase import create_client, Client
-import requests
-
-def log_usage(user_id, event_type, petition_type, ai_model):
-    try:
-        url = "https://docs.google.com/forms/d/e/1FAIpQLSev5xymim4QsjjogosMfgKg5nEvmtNhiO9NQ1g197DNd3i5xg/formResponse"
-        
-        # These headers are the "key" to unlock the Google Form from GitHub
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)",
-            "Referer": "https://docs.google.com/forms/d/e/1FAIpQLSev5xymim4QsjjogosMfgKg5nEvmtNhiO9NQ1g197DNd3i5xg/viewform",
-            "Origin": "https://docs.google.com"
-        }
-
-        data = {
-            "entry.2098237273": str(user_id),
-            "entry.1795436794": str(event_type),
-            "entry.1366579905": str(petition_type),
-            "entry.1506216483": str(ai_model)
-        }
-
-        # We increase timeout to 10 to give GitHub enough time to talk to Google
-        response = requests.post(url, data=data, headers=headers, timeout=10)
-        
-        # This logs the result to your Streamlit dashboard (200 = Success)
-        print(f"Log Status Code: {response.status_code}")
-
-    except Exception as e:
-        print(f"Logging failed: {e}")
-
 
 # ---------------------------------------------------
 # 0. UNIVERSAL UI LOCKDOWN
@@ -101,10 +71,9 @@ if not st.session_state.authenticated:
         if st.form_submit_button("Access"):
             creds = st.secrets.get("passwords", {})
             if u in creds and p == creds[u]:
-                log_usage(u, "LOGIN", "NA", st.session_state.selected_model)
                 st.session_state.authenticated = True
                 st.session_state.user_role = u.lower()
-                st.rerun()     
+                st.rerun()
             else:
                 st.error("Invalid credentials")
 
@@ -222,6 +191,8 @@ def detect_query_type(text):
 
     return "general"
 
+
+
 def generate_search_keywords(dtype, facts):
 
     query_type = detect_query_type(facts)
@@ -230,68 +201,11 @@ def generate_search_keywords(dtype, facts):
     # CASE NAME SEARCH
     # -------------------------------
     if query_type == "case_name":
-
-        parts = re.split(r"\bvs\.?|versus|v\.\b", facts, flags=re.IGNORECASE)
-
-        if len(parts) >= 2:
-            party1 = parts[0].strip()
-            party2 = parts[1].strip()
-        else:
-            party1 = facts.strip()
-            party2 = ""
-
-        return [
-            f"{party1} {party2} Kerala High Court",
-            f"{party1} {party2} judgment",
-            f"site:indiankanoon.org {party1} {party2}"
-        ]
-
-    # -------------------------------
-    # CITATION SEARCH
-    # -------------------------------
-    if query_type == "citation":
         return [
             f'"{facts}"',
-            f'site:indiankanoon.org "{facts}"',
-            f'site:sci.gov.in "{facts}"'
-        ]
-
-    # -------------------------------
-    # CASE NUMBER SEARCH
-    # -------------------------------
-    if query_type == "case_number":
-        return [
             f'"{facts}" Kerala High Court',
-            f'site:indiankanoon.org "{facts}"',
-            f'"{facts}" judgment pdf'
+            f'"{facts}" judgment'
         ]
-
-    # -------------------------------
-    # GENERAL ISSUE SEARCH (AI)
-    # -------------------------------
-    strict_prompt = f"""
-Generate exactly 3 short legal issue-based search phrases.
-STRICT RULES:
-- Do NOT generate case names
-- Do NOT generate citations
-- Maximum 6 words per phrase
-- Output only 3 lines
-
-Petition Type: {dtype}
-Facts: {facts}
-"""
-
-    result, _, _ = smart_rotate_draft(
-        strict_prompt,
-        facts,
-        st.session_state.selected_model
-    )
-
-    if result:
-        lines = [l.strip("- ").strip() for l in result.split("\n") if l.strip()]
-        return lines[:3]
-
-    return []
 
     # -------------------------------
     # CITATION SEARCH
@@ -423,7 +337,6 @@ st.session_state.research_period = st.radio(
 
 def generate_google_link(base_site, keywords, period):
     from urllib.parse import quote_plus
-
     current_year = datetime.now().year
     year_filter = ""
 
@@ -432,20 +345,13 @@ def generate_google_link(base_site, keywords, period):
     elif period == "Last 5 Years":
         year_filter = f"{current_year}|{current_year-1}|{current_year-2}|{current_year-3}|{current_year-4}"
 
-    # Kerala High Court search
+    # FIX: Kerala HC uses Indian Kanoon (reliable indexed source)
     if base_site == "highcourt.kerala.gov.in":
-
-        if "site:" in keywords:
-            query = keywords
-        else:
-            query = f"site:indiankanoon.org {keywords} {year_filter}"
-
-    # Supreme Court search
+        query = f'site:indiankanoon.org "{keywords}" "Kerala High Court" {year_filter}'
     else:
         query = f"site:{base_site} {keywords} judgment {year_filter}"
 
     return f"https://www.google.com/search?q={quote_plus(query)}"
-
 
 if st.button("🧠 Generate Official Search Links"):
     if st.session_state.facts_input.strip():
@@ -556,8 +462,6 @@ STRICT RULES:
                     {"label": f"{dtype} ({datetime.now().strftime('%H:%M')})", "content": res}
                 )
                 st.toast(f"Draft generated in {sec}s")
-                log_usage(st.session_state.user_role, "GENERATE_DRAFT", dtype, st.session_state.selected_model)
-
 
 with b2:
     selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH))
@@ -638,4 +542,3 @@ if st.session_state.final_master:
         pdf.set_font("Arial", size=11)
         pdf.multi_cell(0, 10, st.session_state.final_master.encode('latin-1','replace').decode('latin-1'))
         st.download_button("📥 PDF", data=pdf.output(dest='S').encode('latin-1'), file_name=f"{dtype}.pdf")
-        log_usage("test_user", "Test_Event", "Test_Petition", "Test_Model")
