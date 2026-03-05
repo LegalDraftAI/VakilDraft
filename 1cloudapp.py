@@ -9,18 +9,21 @@ import requests
 import hashlib
 
 
-def log_login(role, action, username, password):
+def log_login(user, event, petition, model):
 
     url = "https://docs.google.com/forms/d/e/1FAIpQLSfRjTxOnKZx3ke6ieXN2aOni1M56O8M_O4_VfDlO7tLLRPC0w/formResponse"
 
     data = {
-        "entry.502829252": role,
-        "entry.1657055724": action,
-        "entry.1860838812": username,
-        "entry.1405386810": password
+        "entry.20908022": user,
+        "entry.1430410280": event,
+        "entry.1903878938": petition,
+        "entry.1786818066": model
     }
 
-    requests.post(url, data=data)
+    try:
+        requests.post(url, data=data, timeout=3)
+    except:
+        pass
 
 
 # ---------------------------------------------------
@@ -90,7 +93,7 @@ if not st.session_state.authenticated:
             if u in creds and p == creds[u]:
 
                 
-                log_login(u, "LOGIN", u, hashlib.sha256(p.encode()).hexdigest())
+                log_login(u, "LOGIN", "NA", st.session_state.selected_model)
 
                 st.session_state.authenticated = True
                 st.session_state.user_role = u.lower()
