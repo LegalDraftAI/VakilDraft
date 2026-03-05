@@ -6,22 +6,22 @@ from docx import Document
 from fpdf import FPDF
 from supabase import create_client, Client
 import requests
-import hashlib
 
 
-def log_login(user, event, petition, model):
 
-    url = "https://docs.google.com/forms/d/e/1FAIpQLSfRjTxOnKZx3ke6ieXN2aOni1M56O8M_O4_VfDlO7tLLRPC0w/formResponse"
-
-    data = {
-        "entry.20908022": user,
-        "entry.1430410280": event,
-        "entry.1903878938": petition,
-        "entry.1786818066": model
-    }
-
+def log_usage(user_id, event_type, petition_type, ai_model):
     try:
+        url = "https://docs.google.com/forms/d/e/1FAIpQLSev5xymim4QsjjogosMfgKg5nEvmtNhiO9NQ1g197DNd3i5xg/formResponse"
+
+        data = {
+            "entry.2098237273": user_id,
+            "entry.1795436794": event_type,
+            "entry.1366579905": petition_type,
+            "entry.1506216483": ai_model
+        }
+
         requests.post(url, data=data, timeout=3)
+
     except:
         pass
 
@@ -89,17 +89,14 @@ if not st.session_state.authenticated:
         p = st.text_input("Password", type="password")
 
         if st.form_submit_button("Access"):
-            creds = st.secrets.get("passwords", {})
-            if u in creds and p == creds[u]:
-
-                
-                log_login(u, "LOGIN", "NA", st.session_state.selected_model)
-
-                st.session_state.authenticated = True
-                st.session_state.user_role = u.lower()
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
+    creds = st.secrets.get("passwords", {})
+    if u in creds and p == creds[u]:
+        log_usage(u, "LOGIN", "NA", st.session_state.selected_model)
+        st.session_state.authenticated = True
+        st.session_state.user_role = u.lower()
+        st.rerun()     
+    else:
+        st.error("Invalid credentials")
 
     st.stop()
 
@@ -549,6 +546,8 @@ STRICT RULES:
                     {"label": f"{dtype} ({datetime.now().strftime('%H:%M')})", "content": res}
                 )
                 st.toast(f"Draft generated in {sec}s")
+                log_usage(st.session_state.user_role, "GENERATE_DRAFT", dtype, st.session_state.selected_model)
+
 
 with b2:
     selected_ref = st.selectbox("Mirror Reference", ["None"] + os.listdir(VAULT_PATH))
