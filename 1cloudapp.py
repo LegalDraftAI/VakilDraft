@@ -7,23 +7,22 @@ from fpdf import FPDF
 from supabase import create_client, Client
 import requests
 
-
-
 def log_usage(user_id, event_type, petition_type, ai_model):
     try:
         url = "https://docs.google.com/forms/d/e/1FAIpQLSev5xymim4QsjjogosMfgKg5nEvmtNhiO9NQ1g197DNd3i5xg/formResponse"
-
-        data = {
-            "entry.2098237273": user_id,
-            "entry.1795436794": event_type,
-            "entry.1366579905": petition_type,
-            "entry.1506216483": ai_model
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         }
-
-        requests.post(url, data=data, timeout=3)
-
-    except:
-        pass
+        data = {
+            "entry.2098237273": str(user_id),
+            "entry.1795436794": str(event_type),
+            "entry.1366579905": str(petition_type),
+            "entry.1506216483": str(ai_model)
+        }
+        requests.post(url, data=data, headers=headers, timeout=5, verify=True)
+    except Exception as e:
+        print(f"Logging failed: {e}")
 
 
 # ---------------------------------------------------
