@@ -638,3 +638,4 @@ if st.session_state.final_master:
         pdf.set_font("Arial", size=11)
         pdf.multi_cell(0, 10, st.session_state.final_master.encode('latin-1','replace').decode('latin-1'))
         st.download_button("📥 PDF", data=pdf.output(dest='S').encode('latin-1'), file_name=f"{dtype}.pdf")
+        log_usage("test_user", "Test_Event", "Test_Petition", "Test_Model")
