@@ -89,14 +89,14 @@ if not st.session_state.authenticated:
         p = st.text_input("Password", type="password")
 
         if st.form_submit_button("Access"):
-    creds = st.secrets.get("passwords", {})
-    if u in creds and p == creds[u]:
-        log_usage(u, "LOGIN", "NA", st.session_state.selected_model)
-        st.session_state.authenticated = True
-        st.session_state.user_role = u.lower()
-        st.rerun()     
-    else:
-        st.error("Invalid credentials")
+            creds = st.secrets.get("passwords", {})
+            if u in creds and p == creds[u]:
+                log_usage(u, "LOGIN", "NA", st.session_state.selected_model)
+                st.session_state.authenticated = True
+                st.session_state.user_role = u.lower()
+                st.rerun()     
+            else:
+                st.error("Invalid credentials")
 
     st.stop()
 
