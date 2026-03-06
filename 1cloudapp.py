@@ -26,6 +26,44 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
+# ---------------------------------------------------
+# NEW: LOG MANAGER 
+# ---------------------------------------------------
+
+@st.cache_resource
+class LogManager:
+    def __init__(self):
+        self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # We store logs in a list for the table, 
+        # but also keep a reference by session_id for quick updates
+        self.logs = []
+
+    def add_login(self, username):
+        session_id = str(time.time()) # Your unique ID logic
+        entry = {
+            "session_id": session_id,
+            "user": username.upper(),
+            "login_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "logout_time": "Active 🟢",
+            "year": datetime.now().year
+        }
+        self.logs.append(entry)
+        return session_id
+
+    def add_logout(self, session_id):
+        # Find the specific entry and update it
+        for entry in self.logs:
+            if entry["session_id"] == session_id:
+                entry["logout_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                break
+
+    def get_df(self):
+        return pd.DataFrame(self.logs)
+
+log_store = LogManager()
+
+
 # ---------------------------------------------------
 # 1. SESSION STATE INIT
 # ---------------------------------------------------
@@ -73,6 +111,9 @@ if not st.session_state.authenticated:
             if u in creds and p == creds[u]:
                 st.session_state.authenticated = True
                 st.session_state.user_role = u.lower()
+                sid = log_store.add_login(u)
+                st.session_state.current_sid = sid
+
                 st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -264,6 +305,10 @@ with col2:
 
 with col3:
     if st.button("🚪 Logout"):
+       
+       if "current_sid" in st.session_state:
+            log_store.add_logout(st.session_state.current_sid)
+
         st.session_state.authenticated = False
         st.session_state.user_role = "user"
         st.rerun()
@@ -476,6 +521,10 @@ with b2:
 
 with b3:
     if st.button("🗑️ Reset All", use_container_width=True):
+        # 1. Log the logout before clearing state
+        if "current_sid" in st.session_state:
+            log_store.add_logout(st.session_state.current_sid)
+            
         preserved_auth = st.session_state.get("authenticated", False)
         preserved_role = st.session_state.get("user_role", "user")
         for key in list(st.session_state.keys()):
@@ -483,6 +532,7 @@ with b3:
         st.session_state.authenticated = preserved_auth
         st.session_state.user_role = preserved_role
         st.rerun()
+
 
 # ---------------------------------------------------
 # 10. STYLE VAULT
@@ -542,3 +592,22 @@ if st.session_state.final_master:
         pdf.set_font("Arial", size=11)
         pdf.multi_cell(0, 10, st.session_state.final_master.encode('latin-1','replace').decode('latin-1'))
         st.download_button("📥 PDF", data=pdf.output(dest='S').encode('latin-1'), file_name=f"{dtype}.pdf")
+
+
+# ---------------------------------------------------
+# 13. ADMIN AUDIT (NEW)
+# ---------------------------------------------------
+if st.session_state.get("user_role") == "admin":
+    st.divider()
+    with st.expander("🛡️ Admin: Access Logs"):
+        df = log_store.get_df()
+        if not df.empty:
+            st.info(f"System Online Since: {log_store.start_time}")
+            # Show newest first, hide the session_id
+            st.dataframe(df.drop(columns=["session_id"]).iloc[::-1], use_container_width=True)
+            
+            # Download for your Mac
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Logs (CSV)", data=csv, file_name="vakildraft_access_logs.csv")
+        else:
+            st.write("No logs yet.")
