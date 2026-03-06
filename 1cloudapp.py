@@ -528,7 +528,7 @@ with b3:
         preserved_auth = st.session_state.get("authenticated", False)
         preserved_role = st.session_state.get("user_role", "user")
         for key in list(st.session_state.keys()):
-            del st.session_state[key]
+          del st.session_state[key]
         st.session_state.authenticated = preserved_auth
         st.session_state.user_role = preserved_role
         st.rerun()
