@@ -305,8 +305,8 @@ with col2:
 
 with col3:
     if st.button("🚪 Logout"):
-       
-       if "current_sid" in st.session_state:
+
+        if "current_sid" in st.session_state:
             log_store.add_logout(st.session_state.current_sid)
 
         st.session_state.authenticated = False
