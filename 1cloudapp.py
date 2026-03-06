@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import time
 import streamlit as st
 import os, io, urllib.parse, time, pandas as pd, re
 from datetime import datetime
@@ -26,36 +29,34 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
 # ---------------------------------------------------
-# NEW: LOG MANAGER 
+# NEW: LOG MANAGER (Using modern ZoneInfo for India)
 # ---------------------------------------------------
 
 @st.cache_resource
 class LogManager:
     def __init__(self):
-        self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # We store logs in a list for the table, 
-        # but also keep a reference by session_id for quick updates
+        # Setting the timezone to India using ZoneInfo
+        self.india_tz = ZoneInfo("Asia/Kolkata")
+        self.start_time = datetime.now(self.india_tz).strftime("%Y-%m-%d %I:%M %p")
         self.logs = []
 
     def add_login(self, username):
-        session_id = str(time.time()) # Your unique ID logic
+        session_id = str(time.time())
         entry = {
             "session_id": session_id,
             "user": username.upper(),
-            "login_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "logout_time": "Active 🟢",
-            "year": datetime.now().year
+            "login_time": datetime.now(self.india_tz).strftime("%Y-%m-%d %I:%M %p"),
+            "logout_time": "Active", 
+            "year": datetime.now(self.india_tz).year
         }
         self.logs.append(entry)
         return session_id
 
     def add_logout(self, session_id):
-        # Find the specific entry and update it
         for entry in self.logs:
             if entry["session_id"] == session_id:
-                entry["logout_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                entry["logout_time"] = datetime.now(self.india_tz).strftime("%Y-%m-%d %I:%M %p")
                 break
 
     def get_df(self):
